@@ -1,17 +1,15 @@
 # Kotlin compiler structure
 Kotlin compiler is built from two major parts, usually referred to as **frontend** and **backend**.
 
-In frontend, compiler takes input text files and tries to create a model of the program. It includes parsing the files and analyzing them for correctness. After frontend has finished its execution, it produces a complete structure describing the code in a form of IR (intermediate representation). Big parts of compiler frontend is shared with Intellij IDEs, so you may find a lot of similarities with them. In the end, frontend generates intermediate representation (IR) of the compiled module which passes it over to backend.
+In frontend, compiler takes input text files and tries to create a model of the program. It includes parsing the files and analyzing them for correctness. A large part of compiler frontend is shared with Intellij IDEs, so you may find a lot of similarities between them. In the end, frontend generates intermediate representation (IR) of the compiled module which passes it over to backend.
 
-Taking over from frontend stage, backend receives IR and generates platform specific artifacts from it. It includes optimizing IR and shaping it for platform codegen ("lowering") as well as generation of binaries.
+Taking over from frontend stage, backend receives IR and generates platform specific artifacts from it. Backend stages include optimizing IR and shaping it for platform codegen ("lowering") as well as generation of binaries.
 
-Both stages are quite complex and contain of multiple smaller stages. The most notable of them (for plugin development) are presented below:
+Both frontend and backend can be separated into multiple smaller stages. The most notable of them for plugin development are presented below:
 ## Frontend
-
-A big part of frontend is dedicated to parsing source files (lexing and parsing stages), but plugin developers don't have any influence on how it happens to avoid introducing custom syntax. However, They are still described here for consistency and better understanding of compiler pipeline.
 ### Stage 1: Lexing and parsing
 
-The first part of compiler pipeline, lexer, annotates the original code (taken from file as a string) with a sequence of tokens. These tokens attach meaning to particular substrings (keywords, operators, etc).
+The first part of compiler pipeline, lexer, annotates code string with a sequence of tokens. These tokens attach some meaning to particular substrings (keywords, operators, etc).
 
 <table>
 <tr>
@@ -40,9 +38,9 @@ RBRACE
 </tr>
 </table>
 
-With these tokens ready, parser creates a tree representation of the code files (commonly referred as AST - abstract syntax tree). This AST is built from [`ASTNode`]) instances, but current compiler frontend doesn't use it directly. Instead, it is transformed into PSI (Program Structure Interface), a higher level abstraction which creates an appropriate instance of `KtElement` out of `ASTNode`.
+With these tokens ready, parser creates a tree representation of the compilation module (commonly referred as AST - abstract syntax tree). This AST is built from [`ASTNode`]) instances, but current compiler frontend doesn't use it directly. Instead, it is modified into PSI (Program Structure Interface), a higher level abstraction which creates an appropriate instance of `KtElement` out of `ASTNode`.
 
-> Note: new compiler frontend (built with FIR) doesn't follow this pattern. See [[fir]] to find out more about they way it works.
+> Note: new compiler frontend (built with FIR) operates quite a bit differently. See [[fir]] to find out more about they way it works.
 
 <table>
 <tr>
@@ -90,12 +88,12 @@ KtFile
 </tr>
 </table>
 
-You can find more information about this stage in [custom language support section](https://plugins.jetbrains.com/docs/intellij/implementing-parser-and-psi.html) of IDEA documentation. 
+Compiler doesn't provide any extension points for plugins in this stage, as it would directly affect syntax of the language. To learn more about internals of this stage, you can refer to [custom language support section](https://plugins.jetbrains.com/docs/intellij/implementing-parser-and-psi.html) of IDEA documentation, as Kotlin uses the same mechanisms. 
 ### Stage 2: Analysis
-With PSI ready, compiler is ready to start analysis. It does a pass through the PSI tree, connecting its contents and perfoming various checks. The result of this stage is the additional metadata for PSI tree which is kept in `BindingContext`. Some examples:
+With PSI ready, frontend launches analyzer. It does a pass through the PSI tree, perfoming various checks and identifying classes, functions, types and many other things. The result of this stage is the additional metadata for PSI tree saved in `BindingContext`. Some examples:
   - Declarations (e.g. classes, functions and variables) get attached information about their types, parameters and declarations they contain in form of `descriptors`.
   - Function calls and variable references are associated with the `descriptors` they are calling through `ResolvedCall`.
-  - Types of functions and variables is resolved and stored in a form of `KotlinType`
+  - Types of functions and variables are resolved and stored in a form of `KotlinType`
 
 Similarly, Kotlin compiler reads through contents of dependency artifacts (.jar, .klib and others) and retrieves similar metadata about declarations to make sure that calls to external libraries are also resolved correctly.
 
@@ -147,7 +145,7 @@ Compiler plugins are able to control analysis through `AnalysisHandlerExtension`
 
 ### Stage 3: Creating intermediate representation (Psi2IR)
 
-After analysis is finished, compiler uses all collected information about source code to produce IR modules for backend. IR is represented as a structured tree (somewhat similar to PSI), but it combines information from `BindingContext` and PSI nodes, making codegen process more efficient.
+After analysis is finished, compiler uses all collected information about source code to produce IR modules for backend. IR is represented as a structured tree (somewhat similar to PSI), combining information from `BindingContext` and PSI nodes, making codegen process more efficient.
 
 <table>
 <tr>
@@ -195,30 +193,30 @@ IR_MODULE
 </tr>
 </table>
 
-If compiler reaches this stage, it is safe to assume that Kotlin code in compilation is valid, as later phase - backend - is only responsible for generating artifacts. For compiler plugin authors, it means that any additional checks should be done **before** the IR stage. Backend extensions provide no way to report errors by default and, although workarounds exist, it is highly recommended to validate everything during analysis.
+If compiler reaches this stage, it is safe to assume that Kotlin code for compilation module is valid, as later phase - backend - is only responsible for generating artifacts. For compiler plugin authors, it means that any custom checks should be performed **before** the IR stage. Backend extensions provide no way to report errors by default and, although workarounds exist, it is highly recommended to validate everything during analysis.
 ## Backend
 Backend transforms and optimizes IR, later converting it to platform specific codegen.
 
 ### Stage 1: IR Lowerings
-Lowering can be described as a pass over IR elements, which also could transform IR in some fashion. They allow dividing backend logic into smaller pieces, which bring multiple benefits (e.g. code sharing between supported platforms).
+Lowering is a single pass over IR elements, performing certain logic and mutations over the tree. It splits backend logic into smaller pieces, with each pass focusing on one particular task. Some lowerings are shared between backends for each platform, allowing for effectively sharing optimization logic.
 
-Compiler plugins can define their own lowerings, which are executed as a post-processing pass on the original IR. As plugin authors, we can change IR tree in any compatible way, with all downstream optimizations applied to it by default. It is the only backend extension point available at this particular moment of time, and compiler provides no access to the final IR it uses for codegen.
+Compiler plugins can define their own lowerings, which are executed as a post-processing pass on the original IR. As plugin authors, we can change IR tree in any compatible way, with all downstream optimizations applied to it by default. However, it is the only IR extension point available at this particular moment of time, with compiler providing no access to the final IR it uses for codegen.
 
 > Modules that are distributed as KLIB artifacts (JS and Native) don't go through backend step. They are still affected by compiler plugins (as they are technically not connected to backend, but Psi2IR postprocessing). 
 > 
 > Serialized IR and metadata (descriptors) from this step form the KLIB artifact and platform lowerings and the final codegen step are only run when building platform executable.
 
-Every platform defines its own set of lowerings that optimize and shape IR structure to simplify the final conversion: generating platform binaries. You can find configurations for different platforms in compiler source code ([example](https://github.com/JetBrains/kotlin/blob/a7fef487c1a8bbfe777135141447a431d322ce78/compiler/ir/backend.jvm/lower/src/org/jetbrains/kotlin/backend/jvm/JvmLower.kt#L278)).
+Every platform defines its own set of lowerings that optimize and shape IR structure to simplify the final conversion: generating platform binaries. You can find configurations for each platform in compiler source code ([example](https://github.com/JetBrains/kotlin/blob/a7fef487c1a8bbfe777135141447a431d322ce78/compiler/ir/backend.jvm/lower/src/org/jetbrains/kotlin/backend/jvm/JvmLower.kt#L278)).
 
 ### Stage 2: Codegen
-Codegen is the final stage in compilation where compiler transforms lowered IR into platform-specific output:
+Codegen is the final stage of compilation where compiler transforms lowered IR into platform-specific output:
 - Kotlin/JVM generates JVM bytecode with ObjectWeb ASM;
 - Kotlin/JS creates JS code (with experimental WebAssembly support coming soon);
-- Kotlin/Native lowers its IR into LLVM IR and uses LLVM to compile native binaries.
+- Kotlin/Native transforms its IR into LLVM IR and uses LLVM to compile native binaries.
 
-Each platform has varied requirements to IR, as each backend accesses it slightly differently. It is highly recommended testing compiler plugins on all supported platforms, as plugin that works on JVM might easily fail on JS or Native.
+> Each platform has varied requirements for IR, as each backend accesses it slightly differently. It is highly recommended testing compiler plugins on all supported platforms, as plugin that works on JVM might easily fail on JS or Native.
 
-Overall, platform specific codegen can easily be affected by errors in plugin generated IR, as those inconsistencies are frequently small enough to pass validation and not affect IR lowerings. Unfortunately, information provided about some of the errors is often scarse (and compiler artifact doesn't package sources just yet), so the best advice when analyzing them is to have compiler sources at hand to look up failing assertions and potentially debug compiler when it fails. See [[tooling]] for more information.
+Overall, platform specific codegen can easily be affected by errors in plugin generated IR, as those inconsistencies are frequently small enough to pass validation and not affect IR lowerings. Unfortunately, information provided about errors from that layer is often scarse, so the best advice when analyzing them is to have compiler sources at hand to look up failing assertions and potentially debug compiler when it fails. See [[tooling]] for more information.
 
 ## See also:
 - [[plugin]]
