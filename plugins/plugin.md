@@ -1,1 +1,0 @@
-# Anatomy of a compiler plugin
