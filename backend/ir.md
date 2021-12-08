@@ -1,0 +1,3 @@
+# IR
+
+- Notes about structure

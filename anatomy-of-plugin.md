@@ -4,7 +4,7 @@ Compiler plugin is usually contained in an additional .jar file which is loaded 
 
 ## Attaching plugins
 
-Kotlin compiler will automatically load .jar files provided in `-Xplugin=` parameter in command line. Gradle provides a few convenience methods to manage plugins via Maven coordinates:
+Kotlin compiler will automatically load .jar files provided through `-Xplugin=` parameter in command line. Gradle provides a few convenience methods to manage plugins via Maven coordinates:
 
 ```kotlin
 // Gradle dependency, note custom configuration
@@ -24,7 +24,7 @@ Compiler plugins frequently require additional configuration available with Grad
 
 ## Plugin entrypoints
 
-The compiler tries to load two entrypoints through `ServiceLoader`: `CommandLineProcessor` and `ComponentRegistrar`.
+The compiler loads two plugin entrypoints through `ServiceLoader`: `CommandLineProcessor` and `ComponentRegistrar`.
 
 `CommandLineProcessor` hooks into processing of command line arguments. It requires providing a `pluginId` specific for the plugin and then a method to handle options (provided as `String`). Processed options are then expected to be included into `CompilerConfiguration`, which is later supplied to `ComponentRegistrar`. 
 

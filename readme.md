@@ -6,7 +6,7 @@ If you feel like something is missing, feel free to open an issue with feature r
 
 Where to start:
 - [[compiler-structure]]: Structured explanation of compiler phases
-- 🚧[[anatomy-of-plugin]]🚧: Anatomy of the compiler plugin
+- [[anatomy-of-plugin]]: Anatomy of the compiler plugin
 - 🚧[[tooling]]🚧: Tips for compiler plugin development
 
 Notes in this repo are not intended to be a structured tutorial on writing your plugins. However, there are plenty of articles (and talks) on starting with Kotlin compiler plugin development:

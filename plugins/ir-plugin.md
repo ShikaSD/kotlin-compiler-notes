@@ -1,1 +1,0 @@
-# IR plugin
